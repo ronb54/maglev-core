@@ -1,12 +1,8 @@
-import { Node } from 'tiptap'
+import { Node } from '@tiptap/core'
 
-export default class Doc extends Node {
-  get name() {
-    return 'doc'
-  }
-  get schema() {
-    return {
-      content: 'block',
-    }
-  }
-}
+const Doc = Node.create({
+  name: 'doc',
+  content: 'block'
+})
+
+export default Doc
