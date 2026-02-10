@@ -47,7 +47,7 @@ export default class extends Controller {
       content: this.contentValue,
       onSelectionUpdate: ({ editor }) => {
         // Simple actions
-        this.toggleButtonState('bold', editor.isActive('bold'))        
+        this.toggleButtonState('bold', editor.isActive('bold'))
         this.toggleButtonState('italic', editor.isActive('italic'))
         this.toggleButtonState('underline', editor.isActive('underline'))
         this.toggleButtonState('strikethrough', editor.isActive('strikethrough'))
@@ -99,7 +99,7 @@ export default class extends Controller {
 
   getHTML(editor) {
     const content = editor.getHTML()
-    return this.lineBreakValue ? content.replace(/<\/?p>/g, '') : content      
+    return this.lineBreakValue ? content.replace(/<\/?p>/g, '') : content
   }
 
   focus() {
@@ -209,36 +209,71 @@ export default class extends Controller {
     const url = new URL(this.editLinkPathValue, window.location.origin)
     const link = this.editor.getAttributes('link')
 
+    // Keep the current text selection while the modal is open.
+    this.savedSelection = this.editor.state.selection
+
     console.log('toggleLink,build link from', link)
-    
+
     url.searchParams.set('input_name', this.inputNameValue)
     url.searchParams.set('link[href]', link.href ?? '')
-    url.searchParams.set('link[link_id]', link['maglev-link-id'])
-    url.searchParams.set('link[section_id]', link['maglev-section-id'])
+
+    const linkId = this.normalizeNilish(link['maglev-link-id'])
+    const sectionId = this.normalizeNilish(link['maglev-section-id'])
+    if (linkId) url.searchParams.set('link[link_id]', linkId)
+    if (sectionId) url.searchParams.set('link[section_id]', sectionId)
+
     url.searchParams.set('link[open_new_window]', link.target === '_blank')
 
     // get or guess the link type
-    let linkType = link['maglev-link-type']
+    let linkType = this.normalizeNilish(link['maglev-link-type'])
     if (!linkType) linkType = link.href?.startsWith('mailto:') ? 'email' : 'url'
     url.searchParams.set('link[link_type]', linkType)
-    
+
     // email
-    if (linkType === 'email')
+    if (linkType === 'email' && link.href)
       url.searchParams.set('link[email]', link.href.replace('mailto:', ''))
-    
+
     Turbo.visit(url, { frame: 'modal' })
   }
 
   setLink(event) {
-    const link = JSON.parse(event.detail)
-    console.log('setLink, link=', link)
-    this.editor.commands.setLink({ 
-      href: link.href, 
-      target: link.open_new_window ? '_blank' : '', 
-      'maglev-link-type': link.link_type,
-      'maglev-link-id': link.link_id,
-      'maglev-section-id': link.section_id
-    })
+    // In Maglev 3, turbo_stream dispatch_event provides detail as an object.
+    // Keep compatibility with string payloads as well.
+    const link = typeof event.detail === 'string' ? JSON.parse(event.detail) : event.detail
+    if (!link) return
+
+    const href = this.normalizeNilish(link.href)
+    if (!href) return
+
+    const attrs = {
+      href,
+      target: link.open_new_window ? '_blank' : null,
+      'maglev-link-type': this.normalizeNilish(link.link_type) || 'url',
+      'maglev-link-id': this.normalizeNilish(link.link_id),
+      'maglev-section-id': this.normalizeNilish(link.section_id)
+    }
+
+    console.log('setLink, link=', link, attrs)
+
+    const chain = this.editor.chain().focus()
+
+    if (this.savedSelection) {
+      chain.setTextSelection({ from: this.savedSelection.from, to: this.savedSelection.to })
+      this.savedSelection = null
+    }
+
+    chain.extendMarkRange('link').setLink(attrs).run()
+
+    // Ensure the hidden input + setting change are updated even if tiptap doesn't emit.
+    const content = this.getHTML(this.editor)
+    this.hiddenInputTarget.value = content
+    this.dispatch('change', { detail: { value: content } })
+  }
+
+  normalizeNilish(value) {
+    if (value === null || value === undefined) return null
+    if (value === '' || value === 'null' || value === 'undefined') return null
+    return value
   }
 
   unsetLink() {

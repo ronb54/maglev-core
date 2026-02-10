@@ -10,4 +10,13 @@ RSpec.describe 'Maglev::Assets::ActiveStorageProxyController' do
     expect(response.body).to eq(IO.binread(file_fixture('asset.jpg')))
     expect(response.headers['cache-control']).to match('max-age=3155695200, public')
   end
+
+  it 'returns 404 when an asset has no attached file' do
+    orphan = create(:asset)
+    orphan.file.purge
+
+    get "/maglev/assets/#{orphan.id}/gibberish"
+
+    expect(response).to have_http_status(:not_found)
+  end
 end
