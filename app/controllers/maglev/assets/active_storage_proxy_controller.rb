@@ -8,7 +8,10 @@ module Maglev
       private
 
       def set_blob
-        @blob = Maglev::Asset.find(resource_id).file
+        asset = Maglev::Asset.find(resource_id)
+        return head(:not_found) unless asset.file.attached?
+
+        @blob = asset.file.blob
       rescue ActiveRecord::RecordNotFound
         head :not_found
       end
